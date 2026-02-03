@@ -7,7 +7,6 @@ const KEYS = {
   ALERTS: 'alerts',
   ALERTS_LIST: 'alerts:list',
   WITHDRAWAL_BUCKET: 'withdrawals:bucket',
-  ALERTED_SOURCES: 'alerted:sources', // Track source wallets we've already alerted on per destination+bucket
   STATS: 'stats',
   LAST_POLL: 'stats:lastPoll',
   TRANSACTIONS_SCANNED: 'stats:txScanned',
@@ -106,20 +105,27 @@ export async function getWithdrawalsInBucket(
 }
 
 /**
- * Save a suspicious pattern alert
+ * Save or update a suspicious pattern alert
+ * Uses destination wallet as the ID so we only have one alert per destination
  */
 export async function saveAlert(pattern: SuspiciousPattern): Promise<void> {
   const redis = getRedisClient()
 
-  // Store the alert
-  await redis.set(`${KEYS.ALERTS}:${pattern.id}`, JSON.stringify(pattern), {
+  // Use destination wallet as the alert ID
+  const alertId = pattern.destinationWallet
+
+  // Store the alert (overwrite if exists)
+  await redis.set(`${KEYS.ALERTS}:${alertId}`, JSON.stringify({
+    ...pattern,
+    id: alertId,
+  }), {
     ex: TTL.ALERTS,
   })
 
-  // Add to sorted set by detection time for easy listing
+  // Add/update in sorted set by detection time
   await redis.zadd(KEYS.ALERTS_LIST, {
     score: pattern.detectedAt,
-    member: pattern.id,
+    member: alertId,
   })
 
   // Trim old alerts from list (keep last 1000)
@@ -127,6 +133,23 @@ export async function saveAlert(pattern: SuspiciousPattern): Promise<void> {
 
   // Trigger real-time update
   await triggerUpdate()
+}
+
+/**
+ * Get existing alert for a destination wallet
+ */
+export async function getAlertByDestination(destinationWallet: string): Promise<SuspiciousPattern | null> {
+  const redis = getRedisClient()
+  const data = await redis.get<string>(`${KEYS.ALERTS}:${destinationWallet}`)
+
+  if (data) {
+    try {
+      return typeof data === 'string' ? JSON.parse(data) : data
+    } catch (e) {
+      return null
+    }
+  }
+  return null
 }
 
 /**
@@ -251,42 +274,6 @@ export async function isSignatureProcessed(signature: string): Promise<boolean> 
   const redis = getRedisClient()
   const result = await redis.sismember(KEYS.PROCESSED_SIGNATURES, signature)
   return result === 1
-}
-
-/**
- * Get key for tracking alerted source wallets per destination+bucket
- */
-function getAlertedSourcesKey(destinationWallet: string, timestamp: number): string {
-  const windowStart = Math.floor(timestamp / (5 * 60)) * (5 * 60)
-  return `${KEYS.ALERTED_SOURCES}:${destinationWallet}:${windowStart}`
-}
-
-/**
- * Get source wallets we've already alerted on for this destination+bucket
- */
-export async function getAlertedSources(
-  destinationWallet: string,
-  timestamp: number
-): Promise<Set<string>> {
-  const redis = getRedisClient()
-  const key = getAlertedSourcesKey(destinationWallet, timestamp)
-  const members = await redis.smembers(key)
-  return new Set(members || [])
-}
-
-/**
- * Mark source wallets as alerted for this destination+bucket
- */
-export async function markSourcesAlerted(
-  destinationWallet: string,
-  timestamp: number,
-  sourceWallets: string[]
-): Promise<void> {
-  if (sourceWallets.length === 0) return
-  const redis = getRedisClient()
-  const key = getAlertedSourcesKey(destinationWallet, timestamp)
-  await redis.sadd(key, sourceWallets)
-  await redis.expire(key, TTL.WITHDRAWAL_BUCKET)
 }
 
 /**

@@ -6,21 +6,9 @@ import {
   saveAlert,
   isSignatureProcessed,
   markSignaturesProcessed,
-  getAlertedSources,
-  markSourcesAlerted,
+  getAlertByDestination,
 } from '@/lib/storage/redis'
 import { getSeverity, meetsThreshold, THRESHOLDS } from './thresholds'
-
-/**
- * Generate a unique pattern ID
- */
-function generatePatternId(): string {
-  // Use crypto.randomUUID if available, otherwise generate from timestamp
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  return `pattern-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-}
 
 /**
  * Process new stake withdrawals and detect suspicious patterns
@@ -70,42 +58,59 @@ export async function processWithdrawals(
     // Check if we have enough unique sources
     if (meetsThreshold(bucketWithdrawals.size)) {
       const sourceWallets = Array.from(bucketWithdrawals.keys())
+      const transactions = Array.from(bucketWithdrawals.values())
 
-      // Check if we have any NEW source wallets that haven't been alerted yet
-      const alreadyAlerted = await getAlertedSources(destinationWallet, latestTimestamp)
-      const newSources = sourceWallets.filter((s) => !alreadyAlerted.has(s))
+      // Check if there's an existing alert for this destination
+      const existingAlert = await getAlertByDestination(destinationWallet)
 
-      // Only create a new alert if there are new source wallets
-      if (newSources.length === 0) {
+      // Check if we have any NEW source wallets
+      const existingSources = new Set(existingAlert?.sourceWallets || [])
+      const newSources = sourceWallets.filter((s) => !existingSources.has(s))
+
+      // Only update if there are new source wallets (or no existing alert)
+      if (existingAlert && newSources.length === 0) {
         continue
       }
 
-      // Create a suspicious pattern
-      const transactions = Array.from(bucketWithdrawals.values())
+      // Merge with existing data if alert exists
+      let mergedSourceWallets = sourceWallets
+      let mergedTransactions = transactions
+
+      if (existingAlert) {
+        // Merge source wallets
+        const sourceSet = new Set([...existingAlert.sourceWallets, ...sourceWallets])
+        mergedSourceWallets = Array.from(sourceSet)
+
+        // Merge transactions (dedupe by signature)
+        const txMap = new Map(existingAlert.transactions.map((tx) => [tx.signature, tx]))
+        for (const tx of transactions) {
+          txMap.set(tx.signature, tx)
+        }
+        mergedTransactions = Array.from(txMap.values())
+      }
 
       // Calculate window boundaries
-      const timestamps = transactions.map((t) => t.timestamp)
+      const timestamps = mergedTransactions.map((t) => t.timestamp)
       const windowStart = Math.min(...timestamps)
       const windowEnd = Math.max(...timestamps)
 
       // Calculate total amount
-      const totalAmountSol = transactions.reduce((sum, t) => sum + t.amountSol, 0)
+      const totalAmountSol = mergedTransactions.reduce((sum, t) => sum + t.amountSol, 0)
 
       const pattern: SuspiciousPattern = {
-        id: generatePatternId(),
+        id: destinationWallet, // Use destination as ID
         destinationWallet,
-        sourceWallets,
-        transactions,
+        sourceWallets: mergedSourceWallets,
+        transactions: mergedTransactions,
         totalAmountSol,
         windowStart,
         windowEnd,
-        severity: getSeverity(sourceWallets.length),
+        severity: getSeverity(mergedSourceWallets.length),
         detectedAt: Math.floor(Date.now() / 1000),
       }
 
-      // Save the alert and mark sources as alerted
+      // Save/update the alert
       await saveAlert(pattern)
-      await markSourcesAlerted(destinationWallet, latestTimestamp, sourceWallets)
       detectedPatterns.push(pattern)
     }
   }
