@@ -289,14 +289,28 @@ export async function markSignaturesProcessed(signatures: string[]): Promise<voi
 }
 
 /**
- * Clear all data (for testing)
+ * Clear alerts data
  */
 export async function clearAll(): Promise<void> {
   const redis = getRedisClient()
-  const keys = await redis.keys('*')
-  if (keys && keys.length > 0) {
-    for (const key of keys) {
+
+  // Get all alert IDs and delete them
+  const alertIds = await redis.zrange(KEYS.ALERTS_LIST, 0, -1)
+
+  // Delete alert list
+  await redis.del(KEYS.ALERTS_LIST)
+
+  // Delete individual alerts
+  if (alertIds && alertIds.length > 0) {
+    const alertKeys = alertIds.map(id => `${KEYS.ALERTS}:${id}`)
+    for (const key of alertKeys) {
       await redis.del(key)
     }
   }
+
+  // Clear processed signatures
+  await redis.del(KEYS.PROCESSED_SIGNATURES)
+
+  // Trigger update
+  await triggerUpdate()
 }
