@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { cn, formatAddress, formatTimestamp, timeAgo } from '@/lib/utils'
-import type { GroupedAlert } from './AlertsList'
+import type { SuspiciousPattern } from '@/types/alert'
 
 interface AlertCardProps {
-  alert: GroupedAlert
+  alert: SuspiciousPattern
 }
 
 const SEVERITY_STYLES = {
@@ -61,7 +61,7 @@ export function AlertCard({ alert }: AlertCardProps) {
               {alert.severity.toUpperCase()}
             </span>
             <span className="text-xs text-zinc-500">
-              {timeAgo(alert.latestDetectedAt)}
+              {timeAgo(alert.detectedAt)}
             </span>
           </div>
 
