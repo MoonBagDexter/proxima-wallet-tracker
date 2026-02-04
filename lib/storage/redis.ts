@@ -277,6 +277,28 @@ export async function isSignatureProcessed(signature: string): Promise<boolean> 
 }
 
 /**
+ * Batch check which signatures have been processed
+ * Returns a Set of signatures that are already processed
+ */
+export async function getProcessedSignatures(signatures: string[]): Promise<Set<string>> {
+  if (signatures.length === 0) return new Set()
+
+  const redis = getRedisClient()
+  const processed = new Set<string>()
+
+  // Use smismember for batch checking (single Redis call)
+  const results = await redis.smismember(KEYS.PROCESSED_SIGNATURES, signatures)
+
+  for (let i = 0; i < signatures.length; i++) {
+    if (results[i] === 1) {
+      processed.add(signatures[i])
+    }
+  }
+
+  return processed
+}
+
+/**
  * Mark signatures as processed
  */
 export async function markSignaturesProcessed(signatures: string[]): Promise<void> {

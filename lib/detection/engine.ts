@@ -4,7 +4,7 @@ import {
   addWithdrawalToBucket,
   getWithdrawalsInBucket,
   saveAlert,
-  isSignatureProcessed,
+  getProcessedSignatures,
   markSignaturesProcessed,
   getAlertByDestination,
 } from '@/lib/storage/redis'
@@ -18,14 +18,10 @@ export async function processWithdrawals(
 ): Promise<SuspiciousPattern[]> {
   const detectedPatterns: SuspiciousPattern[] = []
 
-  // Filter out already processed signatures
-  const newWithdrawals: StakeWithdrawal[] = []
-  for (const withdrawal of withdrawals) {
-    const processed = await isSignatureProcessed(withdrawal.signature)
-    if (!processed) {
-      newWithdrawals.push(withdrawal)
-    }
-  }
+  // Filter out already processed signatures (batch check - single Redis call)
+  const allSignatures = withdrawals.map(w => w.signature)
+  const processedSignatures = await getProcessedSignatures(allSignatures)
+  const newWithdrawals = withdrawals.filter(w => !processedSignatures.has(w.signature))
 
   if (newWithdrawals.length === 0) {
     return []
