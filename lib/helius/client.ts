@@ -65,10 +65,9 @@ export class HeliusClient {
       try {
         const transactions = await this.getTransactions(pool, { limit: Math.ceil(limit / stakingPools.length) })
 
-        // Filter for stake-related transactions
+        // Filter for stake-related transactions only (no TRANSFER)
         const stakeTransactions = transactions.filter(tx =>
           tx.type?.includes('STAKE') ||
-          tx.type === 'TRANSFER' ||
           this.hasStakeProgramInteraction(tx)
         )
 
