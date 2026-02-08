@@ -18,7 +18,7 @@ const KEYS = {
 const TTL = {
   WITHDRAWAL_BUCKET: 5 * 60, // 5 minutes
   ALERTS: 24 * 60 * 60, // 24 hours
-  PROCESSED_SIGNATURES: 60 * 60, // 1 hour
+  PROCESSED_SIGNATURES: 24 * 60 * 60, // 24 hours (match alerts TTL)
 }
 
 let redisClient: Redis | null = null
@@ -105,16 +105,17 @@ export async function getWithdrawalsInBucket(
 }
 
 /**
- * Save or update a suspicious pattern alert
- * Uses destination wallet as the ID so we only have one alert per destination
+ * Save a suspicious pattern alert.
+ * Skips if an alert with the same ID already exists (no overwriting).
  */
 export async function saveAlert(pattern: SuspiciousPattern): Promise<void> {
   const redis = getRedisClient()
+  const alertId = pattern.id
 
-  // Use destination wallet as the alert ID
-  const alertId = pattern.destinationWallet
+  // Skip if this alert already exists — don't overwrite or bump it
+  const existing = await redis.exists(`${KEYS.ALERTS}:${alertId}`)
+  if (existing) return
 
-  // Store the alert (overwrite if exists)
   await redis.set(`${KEYS.ALERTS}:${alertId}`, JSON.stringify({
     ...pattern,
     id: alertId,
@@ -122,11 +123,8 @@ export async function saveAlert(pattern: SuspiciousPattern): Promise<void> {
     ex: TTL.ALERTS,
   })
 
-  // Add/update in sorted set by detection time
-  await redis.zadd(KEYS.ALERTS_LIST, {
-    score: pattern.detectedAt,
-    member: alertId,
-  })
+  // Add to sorted set by detection time (NX = only if not already present)
+  await redis.zadd(KEYS.ALERTS_LIST, { score: pattern.detectedAt, member: alertId })
 
   // Trim old alerts from list (keep last 1000)
   await redis.zremrangebyrank(KEYS.ALERTS_LIST, 0, -1001)
@@ -311,7 +309,7 @@ export async function markSignaturesProcessed(signatures: string[]): Promise<voi
 }
 
 /**
- * Clear alerts data
+ * Clear alerts data (keeps processed signatures so polls don't re-create alerts)
  */
 export async function clearAll(): Promise<void> {
   const redis = getRedisClient()
@@ -329,9 +327,6 @@ export async function clearAll(): Promise<void> {
       await redis.del(key)
     }
   }
-
-  // Clear processed signatures
-  await redis.del(KEYS.PROCESSED_SIGNATURES)
 
   // Trigger update
   await triggerUpdate()
