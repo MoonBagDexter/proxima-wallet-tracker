@@ -47,7 +47,7 @@ export function AlertCard({ alert }: AlertCardProps) {
             <span className={cn('px-2 py-0.5 text-xs font-medium rounded-full border', styles.badge)}>
               {alert.severity.toUpperCase()}
             </span>
-            <span className="text-xs text-zinc-500">{timeAgo(alert.detectedAt)}</span>
+            <span className="text-xs text-zinc-500">{timeAgo(alert.windowEnd)}</span>
           </div>
 
           {/* Destination wallet */}
