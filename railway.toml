@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "npm run start"
+startCommand = "npx next start -p ${PORT:-3000}"
 healthcheckPath = "/api/stats"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
