@@ -19,8 +19,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`Received ${transactions.length} transactions from Helius webhook`)
 
-    // Filter for stake-related transactions only (no generic WITHDRAW/TRANSFER)
+    // Filter for stake withdrawal transactions
+    // Helius classifies stake withdrawals as type: "WITHDRAW" with source: "STAKE_PROGRAM"
     const stakeTransactions = transactions.filter(tx =>
+      tx.type === 'WITHDRAW' ||
       tx.type === 'STAKE_WITHDRAW' ||
       tx.type === 'WITHDRAW_STAKE' ||
       tx.type?.includes('STAKE') ||

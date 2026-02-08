@@ -42,43 +42,55 @@ export class HeliusClient {
   }
 
   /**
-   * Fetch stake withdrawal transactions using Helius enhanced transactions API
-   * Queries known large staking pools and validators for recent activity
+   * Fetch recent stake withdrawal transactions from the Stake Program.
+   * Uses Solana RPC to get recent signatures, then Helius to parse them.
    */
   async getStakeWithdrawals(options: {
     limit?: number
   } = {}): Promise<HeliusEnhancedTransaction[]> {
     const { limit = 100 } = options
+    const STAKE_PROGRAM_ID = 'Stake11111111111111111111111111111111111111'
+    const SOLANA_RPC = 'https://api.mainnet-beta.solana.com'
 
-    // Known large Solana staking pools
-    const stakingPools = [
-      'mpa4abUkjQoAvPzREkh5Mo75hZhPFQ2FSH6w7dWKuQ5', // Marinade Finance
-      'CgntPoLka5pD5fesJYhGmUCF8KU1QS1ZmZiuAuMZr2az', // Cogent Crypto
-      'J1to1yufRnoWn81KYg1XkTWzmKjnYSnmE2VY8DGUJ9Qv', // Jito
-      'stWirqFCf2Uts1JBL1Jsd3r6VBWhgnpdPxCTe1MFjrq',  // Staked
-    ]
+    try {
+      // Get recent signatures from the Stake Program via Solana RPC
+      const rpcResponse = await fetch(SOLANA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getSignaturesForAddress',
+          params: [STAKE_PROGRAM_ID, { limit: Math.min(limit * 3, 300) }],
+        }),
+      })
 
-    const allTransactions: HeliusEnhancedTransaction[] = []
-
-    // Fetch transactions from each staking pool
-    for (const pool of stakingPools) {
-      try {
-        const transactions = await this.getTransactions(pool, { limit: Math.ceil(limit / stakingPools.length) })
-
-        // Filter for stake-related transactions only (no TRANSFER)
-        const stakeTransactions = transactions.filter(tx =>
-          tx.type?.includes('STAKE') ||
-          this.hasStakeProgramInteraction(tx)
-        )
-
-        allTransactions.push(...stakeTransactions)
-      } catch (e) {
-        console.error(`Failed to fetch from ${pool}:`, e)
-        // Continue with other pools
+      const rpcData = await rpcResponse.json() as {
+        result: Array<{ signature: string }>
       }
-    }
 
-    return allTransactions.slice(0, limit)
+      if (!rpcData.result?.length) return []
+
+      const signatures = rpcData.result.map((s) => s.signature)
+
+      // Parse through Helius in batches of 100
+      const allTransactions: HeliusEnhancedTransaction[] = []
+      for (let i = 0; i < signatures.length; i += 100) {
+        const batch = signatures.slice(i, i + 100)
+        const parsed = await this.parseTransactions(batch)
+        allTransactions.push(...parsed)
+      }
+
+      // Filter for stake withdrawals
+      const withdrawals = allTransactions.filter(
+        (tx) => tx.type === 'WITHDRAW' && tx.source === 'STAKE_PROGRAM'
+      )
+
+      return withdrawals.slice(0, limit)
+    } catch (e) {
+      console.error('Failed to fetch stake withdrawals:', e)
+      return []
+    }
   }
 
   /**
