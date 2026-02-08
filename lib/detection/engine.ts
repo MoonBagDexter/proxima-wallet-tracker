@@ -6,12 +6,19 @@ import {
   saveAlert,
   getProcessedSignatures,
   markSignaturesProcessed,
-  getAlertByDestination,
 } from '@/lib/storage/redis'
 import { getSeverity, meetsThreshold, THRESHOLDS } from './thresholds'
 
 /**
- * Process new stake withdrawals and detect suspicious patterns
+ * Get the time window start for a given timestamp
+ */
+function getWindowStart(timestamp: number): number {
+  return Math.floor(timestamp / THRESHOLDS.TIME_WINDOW_SECONDS) * THRESHOLDS.TIME_WINDOW_SECONDS
+}
+
+/**
+ * Process new stake withdrawals and detect suspicious patterns.
+ * Each 5-minute time window produces its own independent alert.
  */
 export async function processWithdrawals(
   withdrawals: StakeWithdrawal[]
@@ -27,24 +34,27 @@ export async function processWithdrawals(
     return []
   }
 
-  // Group withdrawals by destination wallet
-  const byDestination = new Map<string, StakeWithdrawal[]>()
+  // Group withdrawals by destination wallet AND time window
+  const byBucket = new Map<string, StakeWithdrawal[]>()
   for (const withdrawal of newWithdrawals) {
-    const existing = byDestination.get(withdrawal.destinationWallet) || []
+    const windowStart = getWindowStart(withdrawal.timestamp)
+    const bucketKey = `${withdrawal.destinationWallet}:${windowStart}`
+    const existing = byBucket.get(bucketKey) || []
     existing.push(withdrawal)
-    byDestination.set(withdrawal.destinationWallet, existing)
+    byBucket.set(bucketKey, existing)
   }
 
-  // Process each destination's withdrawals
-  const destinations = Array.from(byDestination.entries())
-  for (const [destinationWallet, destWithdrawals] of destinations) {
-    // Add each withdrawal to its time bucket
+  // Process each destination+window bucket
+  const buckets = Array.from(byBucket.entries())
+  for (const [bucketKey, destWithdrawals] of buckets) {
+    const [destinationWallet] = bucketKey.split(':')
+
+    // Add each withdrawal to its time bucket in Redis
     for (const withdrawal of destWithdrawals) {
       await addWithdrawalToBucket(withdrawal)
     }
 
     // Check the current time bucket for suspicious patterns
-    // Use the most recent withdrawal timestamp as reference
     const latestTimestamp = Math.max(...destWithdrawals.map((w) => w.timestamp))
     const bucketWithdrawals = await getWithdrawalsInBucket(
       destinationWallet,
@@ -56,56 +66,26 @@ export async function processWithdrawals(
       const sourceWallets = Array.from(bucketWithdrawals.keys())
       const transactions = Array.from(bucketWithdrawals.values())
 
-      // Check if there's an existing alert for this destination
-      const existingAlert = await getAlertByDestination(destinationWallet)
-
-      // Check if we have any NEW source wallets
-      const existingSources = new Set(existingAlert?.sourceWallets || [])
-      const newSources = sourceWallets.filter((s) => !existingSources.has(s))
-
-      // Only update if there are new source wallets (or no existing alert)
-      if (existingAlert && newSources.length === 0) {
-        continue
-      }
-
-      // Merge with existing data if alert exists
-      let mergedSourceWallets = sourceWallets
-      let mergedTransactions = transactions
-
-      if (existingAlert) {
-        // Merge source wallets
-        const sourceSet = new Set([...existingAlert.sourceWallets, ...sourceWallets])
-        mergedSourceWallets = Array.from(sourceSet)
-
-        // Merge transactions (dedupe by signature)
-        const txMap = new Map(existingAlert.transactions.map((tx) => [tx.signature, tx]))
-        for (const tx of transactions) {
-          txMap.set(tx.signature, tx)
-        }
-        mergedTransactions = Array.from(txMap.values())
-      }
-
-      // Calculate window boundaries
-      const timestamps = mergedTransactions.map((t) => t.timestamp)
+      const timestamps = transactions.map((t) => t.timestamp)
       const windowStart = Math.min(...timestamps)
       const windowEnd = Math.max(...timestamps)
+      const totalAmountSol = transactions.reduce((sum, t) => sum + t.amountSol, 0)
 
-      // Calculate total amount
-      const totalAmountSol = mergedTransactions.reduce((sum, t) => sum + t.amountSol, 0)
+      // Use destination:windowStart as ID so each time window is a separate alert
+      const alertId = `${destinationWallet}:${getWindowStart(latestTimestamp)}`
 
       const pattern: SuspiciousPattern = {
-        id: destinationWallet, // Use destination as ID
+        id: alertId,
         destinationWallet,
-        sourceWallets: mergedSourceWallets,
-        transactions: mergedTransactions,
+        sourceWallets,
+        transactions,
         totalAmountSol,
         windowStart,
         windowEnd,
-        severity: getSeverity(mergedSourceWallets.length),
+        severity: getSeverity(sourceWallets.length),
         detectedAt: Math.floor(Date.now() / 1000),
       }
 
-      // Save/update the alert
       await saveAlert(pattern)
       detectedPatterns.push(pattern)
     }
