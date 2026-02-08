@@ -48,11 +48,14 @@ export class HeliusClient {
   async getStakeWithdrawals(options: {
     limit?: number
   } = {}): Promise<HeliusEnhancedTransaction[]> {
-    const { limit = 25 } = options
+    const { limit = 100 } = options
 
-    // Known large Solana staking pools (reduced for Cloudflare subrequest limits)
+    // Known large Solana staking pools
     const stakingPools = [
       'mpa4abUkjQoAvPzREkh5Mo75hZhPFQ2FSH6w7dWKuQ5', // Marinade Finance
+      'CgntPoLka5pD5fesJYhGmUCF8KU1QS1ZmZiuAuMZr2az', // Cogent Crypto
+      'J1to1yufRnoWn81KYg1XkTWzmKjnYSnmE2VY8DGUJ9Qv', // Jito
+      'stWirqFCf2Uts1JBL1Jsd3r6VBWhgnpdPxCTe1MFjrq',  // Staked
     ]
 
     const allTransactions: HeliusEnhancedTransaction[] = []

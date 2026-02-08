@@ -4,7 +4,6 @@ import { processWithdrawals } from '@/lib/detection/engine'
 import { updateStats } from '@/lib/storage/redis'
 import type { HeliusEnhancedTransaction } from '@/types/transaction'
 
-export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
 
 /**

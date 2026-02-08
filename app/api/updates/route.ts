@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getRedisClient } from '@/lib/storage/redis'
 
-export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
 
 const LAST_UPDATE_KEY = 'updates:lastChange'

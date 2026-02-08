@@ -1,26 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createHeliusClient } from '@/lib/helius/client'
 import { parseStakeWithdrawals } from '@/lib/helius/stake-parser'
 import { processWithdrawals } from '@/lib/detection/engine'
 import { updateStats } from '@/lib/storage/redis'
 
-export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
 
 /**
- * Cron job endpoint that polls for new stake withdrawals
- * Called every minute by Vercel Cron
+ * Poll endpoint for new stake withdrawals
+ * Called by manual refresh or background polling
  */
-export async function GET(request: NextRequest) {
-  // Verify cron secret (if configured)
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
-
+export async function GET() {
   const startTime = Date.now()
 
   try {
