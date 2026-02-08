@@ -31,15 +31,15 @@ function extractWithdrawal(tx: HeliusEnhancedTransaction): StakeWithdrawal | nul
     a.account !== '11111111111111111111111111111111' // Not system program
   )
 
-  // Find account with negative balance change (source/fee payer)
-  const source = accountChanges.find(a =>
-    a.nativeBalanceChange < 0 &&
-    a.account !== '11111111111111111111111111111111'
-  )
+  if (recipient && recipient.nativeBalanceChange > 10_000_000) { // > 0.01 SOL
+    // Find the account that directly sent SOL to the destination (largest negative change = stake account)
+    const source = accountChanges
+      .filter(a => a.nativeBalanceChange < 0 && a.account !== '11111111111111111111111111111111')
+      .sort((a, b) => a.nativeBalanceChange - b.nativeBalanceChange)[0] // most negative first
 
-  if (recipient && source && recipient.nativeBalanceChange > 10_000_000) { // > 0.01 SOL
-    // Use feePayer as the "source wallet" (the authority doing the withdrawal)
-    const sourceWallet = tx.feePayer || source.account
+    if (!source) return null
+
+    const sourceWallet = source.account
     const destinationWallet = recipient.account
 
     // Skip if same wallet
