@@ -7,7 +7,7 @@ export async function register() {
         const { createHeliusClient } = await import('@/lib/helius/client')
         const { parseStakeWithdrawals } = await import('@/lib/helius/stake-parser')
         const { processWithdrawals } = await import('@/lib/detection/engine')
-        const { updateStats } = await import('@/lib/storage/redis')
+        const { updateStats } = await import('@/lib/storage/json-storage')
 
         const startTime = Date.now()
         const helius = createHeliusClient()

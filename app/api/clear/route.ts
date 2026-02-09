@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { clearAll } from '@/lib/storage/redis'
+import { clearAll } from '@/lib/storage/json-storage'
 
 export const dynamic = 'force-dynamic'
 

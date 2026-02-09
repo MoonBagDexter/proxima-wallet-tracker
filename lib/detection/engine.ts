@@ -6,7 +6,7 @@ import {
   saveAlert,
   getProcessedSignatures,
   markSignaturesProcessed,
-} from '@/lib/storage/redis'
+} from '@/lib/storage/json-storage'
 import { getSeverity, meetsThreshold, THRESHOLDS } from './thresholds'
 
 /**

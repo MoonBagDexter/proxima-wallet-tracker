@@ -1,9 +1,7 @@
 import { NextRequest } from 'next/server'
-import { getRedisClient } from '@/lib/storage/redis'
+import { getLastUpdate } from '@/lib/storage/json-storage'
 
 export const dynamic = 'force-dynamic'
-
-const LAST_UPDATE_KEY = 'updates:lastChange'
 
 /**
  * SSE endpoint for real-time updates
@@ -14,7 +12,6 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const redis = getRedisClient()
       let lastSeen = 0
 
       const sendEvent = (data: object) => {
@@ -24,10 +21,10 @@ export async function GET(request: NextRequest) {
       // Send initial connection event
       sendEvent({ type: 'connected', timestamp: Date.now() })
 
-      // Poll Redis for changes every 2 seconds
+      // Poll for changes every 2 seconds
       const interval = setInterval(async () => {
         try {
-          const lastUpdate = await redis.get<number>(LAST_UPDATE_KEY) || 0
+          const lastUpdate = await getLastUpdate()
 
           if (lastUpdate > lastSeen) {
             lastSeen = lastUpdate

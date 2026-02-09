@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseStakeWithdrawals } from '@/lib/helius/stake-parser'
 import { processWithdrawals } from '@/lib/detection/engine'
-import { updateStats } from '@/lib/storage/redis'
+import { updateStats } from '@/lib/storage/json-storage'
 import type { HeliusEnhancedTransaction } from '@/types/transaction'
 
 export const dynamic = 'force-dynamic'

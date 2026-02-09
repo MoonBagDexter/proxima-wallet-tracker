@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAlerts, getAlert } from '@/lib/storage/redis'
+import { getAlerts, getAlert } from '@/lib/storage/json-storage'
 
 export const dynamic = 'force-dynamic'
 

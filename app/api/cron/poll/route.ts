@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createHeliusClient } from '@/lib/helius/client'
 import { parseStakeWithdrawals } from '@/lib/helius/stake-parser'
 import { processWithdrawals } from '@/lib/detection/engine'
-import { updateStats } from '@/lib/storage/redis'
+import { updateStats } from '@/lib/storage/json-storage'
 
 export const dynamic = 'force-dynamic'
 
